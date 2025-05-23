@@ -1,0 +1,287 @@
+/*Title: Game.cpp
+  Author: Prof. Dixon
+  Date: 4/17/2025
+  Description: Implementation of Game class
+*/
+
+#include "Game.h"
+#include <fstream>
+#include <sstream>
+#include <stdexcept>
+
+// Name: Game(string filename) - Overloaded Constructor
+// Description: Creates a new Game
+// Preconditions: None
+// Postconditions: Initializes all game variables to defaults (constants)
+// including m_myHero (null), mapFile (passed value), craftFile (passed)
+// and starting area (START_AREA)
+
+Game::Game(string areaFile, string craftFile) : m_myHero(nullptr), m_areas(), m_curArea(START_AREA),m_items(), m_craftFile(craftFile), m_areaFile(areaFile) {}
+
+// Name: ~Game
+// Description: Destructor
+// Preconditions: None
+// Postconditions: Deallocates anything dynamically allocated
+//                 in Game
+Game::~Game() {
+   for (size_t i = 0; i < m_areas.size(); ++i) {
+      delete m_areas[i];
+   }
+   m_areas.clear();
+
+// Clean up items
+   for (size_t i = 0; i < m_items.size(); ++i) {
+      delete m_items[i];
+   }
+   m_items.clear();
+
+    // Clean up hero
+    delete m_myHero;
+}
+
+// Name: LoadMap()
+// Description: Reads area data from the map file and dynamically
+//             creates Area objects. Inserts each new Area into
+//             m_myMap in the order encountered.
+// Preconditions: m_mapFile is set to a valid filename;
+//             the file exists and is formatted correctly.
+// Postconditions: m_myMap contains all loaded Area pointers;
+//             file stream is closed.
+void Game::LoadMap() {
+    ifstream inputFile(m_areaFile);
+    if (!inputFile.is_open()) {
+        throw runtime_error("Failed to open map file: " + m_areaFile);
+    }
+
+    string line;
+    while (getline(inputFile, line)) {
+        stringstream ss(line);
+        string token;
+        vector<string> tokens;
+
+        while (getline(ss, token, DELIMITER)) {
+            tokens.push_back(token);
+        }
+
+        if (tokens.size() != 7) {
+            continue; // Skip malformed lines
+        }
+
+        int id = stoi(tokens[0]);
+        string name = tokens[1];
+        string desc = tokens[2];
+        int north = stoi(tokens[3]);
+        int east = stoi(tokens[4]);
+        int south = stoi(tokens[5]);
+        int west = stoi(tokens[6]);
+
+        m_areas.push_back(new Area(id, name, desc, north, east, south, west));
+    }
+    inputFile.close();
+}
+
+// Name: LoadCraft()
+// Description: Reads crafting definitions from the craft file and
+//              creates Item objects. Parses each line into an
+//              item name and its requirement list.
+// Preconditions: m_craftFile is set to a valid filename;
+//              the file exists and uses DELIMITER.
+// Postconditions: m_items contains new Item pointers for
+//              every recipe; file stream is closed.
+void Game::LoadCraft() {
+    ifstream inputFile(m_craftFile);
+    if (!inputFile.is_open()) {
+        throw runtime_error("Failed to open craft file: " + m_craftFile);
+    }
+
+    string line;
+    while (getline(inputFile, line)) {
+        size_t firstDelim = line.find(DELIMITER);
+        if (firstDelim == line.length())
+	  continue;
+
+        string itemName = line.substr(0, firstDelim);
+        string rest = line.substr(firstDelim + 1);
+
+        vector<string> requirements;
+        stringstream ss(rest);
+        string requirement;
+        
+        while (getline(ss, requirement, DELIMITER)) {
+            if (!requirement.empty() && requirement != "None") {
+                requirements.push_back(requirement);
+            }
+        }
+
+        m_items.push_back(new Item(itemName, requirements));
+    }
+    inputFile.close();
+}
+
+// Name: HeroCreation()
+// Description: Prompts the player to enter a hero name and
+//              constructs a new Hero.
+// Preconditions: Standard input (cin) is available.
+// Postconditions: m_myHero points to a newly allocated Hero
+//              with the entered name.
+void Game::HeroCreation() {
+    string heroName;
+    cout << "Enter your hero's name: ";
+    getline(cin, heroName);
+
+    if (heroName.empty()) {
+        heroName = "Unknown Hero";
+    }
+
+    m_myHero = new Hero(heroName);
+}
+
+// Name: Look()
+// Description: Displays the current Area's name, description,
+//              and possible exits.
+// Preconditions: m_curArea is a valid index into m_myMap.
+// Postconditions: Current area details are printed to stdout.
+void Game::Look() {
+    if (m_curArea < 0 || m_curArea >= (int)m_areas.size()) {
+        cout << "Invalid area!" << endl;
+        return;
+    }
+    m_areas[m_curArea]->PrintArea();
+}
+
+// Name: StartGame()
+// Description: Initializes game flow by loading map and crafting
+//              data, creating the hero, then showing the
+//              starting area and entering the main loop.
+// Preconditions: m_mapFile and m_craftFile are set; files exist.
+// Postconditions: Game state is initialized and Action() is called.
+void Game::StartGame() {
+    LoadMap();
+    LoadCraft();
+    HeroCreation();
+    Look();
+    Action();
+}
+
+// Name: Action()
+// Description: Presents the player with the main menu
+//              (Look, Move, Use Area, Craft, Inventory, Quit)
+//              and drives game interactions until the player quits.
+// Preconditions: Hero and map are initialized.
+// Postconditions: Continues looping until user selects Quit.
+void Game::Action() {
+    while (true) {
+        cout << "\nWhat would you like to do?\n";
+        cout << "1. Look around\n";
+        cout << "2. Move\n";
+        cout << "3. Use area resources\n";
+        cout << "4. Craft items\n";
+        cout << "5. Check inventory\n";
+        cout << "6. Quit\n";
+        cout << "Enter your choice: ";
+
+        int choice;
+        cin >> choice;
+        cin.ignore(); // Clear newline
+
+        switch (choice) {
+            case 1: Look(); break;
+            case 2: Move(); break;
+            case 3: UseArea(); break;
+            case 4: CraftItem(); break;
+            case 5: m_myHero->DisplayInventory(); break;
+            case 6: return; // Quit game
+            default: cout << "Invalid choice!\n";
+        }
+    }
+}
+
+// Name: Move()
+// Description: Prompts the player for a direction (N/E/S/W),
+//              validates the move, updates m_curArea, and
+//              calls Look() to show the new area.
+// Preconditions: m_curArea is valid; m_myMap contains
+//              adjacent Area pointers.
+// Postconditions: m_curArea is updated to the new area index.
+void Game::Move() {
+    cout << "Which direction? (N/E/S/W): ";
+    char dir;
+    cin >> dir;
+    cin.ignore();
+
+    int newArea = m_areas[m_curArea]->CheckDirection(dir);
+    if (newArea == -1) {
+        cout << "You can't go that way!\n";
+        return;
+    }
+
+    // Find the area with matching ID
+    for (size_t i = 0; i < m_areas.size(); i++) {
+        if (m_areas[i]->GetID() == newArea) {
+            m_curArea = i;
+            Look();
+            return;
+        }
+    }
+    cout << "Invalid area in that direction!\n";
+}
+
+// Name: CraftItem()
+// Description: Displays all craftable items, prompts for a selection,
+//              and attempts crafting via Hero's CanCraft/Craft methods.
+// Preconditions: m_items is populated with Item pointers.
+// Postconditions: If crafting succeeds, inventory is
+//              updated; otherwise prints error.
+void Game::CraftItem() {
+    cout << "Available items to craft:\n";
+    for (size_t i = 0; i < m_items.size(); i++) {
+        cout << i+1 << ". " << m_items[i]->GetName() << "\n";
+    }
+
+    cout << "Enter item number to craft: ";
+    int choice;
+    cin >> choice;
+    cin.ignore();
+
+    if (choice < 1 || choice > (int)m_items.size()) {
+        cout << "Invalid choice!\n";
+        return;
+    }
+
+    Item* selected = m_items[choice-1];
+    if (m_myHero->CanCraft(selected->GetReq())) {
+        m_myHero->Craft(selected->GetName(), selected->GetReq());
+	//  cout << "Successfully crafted " << selected->GetName() << "!\n";
+    } else {
+        cout << "You don't have the required materials!\n";
+    }
+}
+
+// Name: UseArea()
+// Description: Prompts the player to choose a search action
+//              (Raw, Natural, Food, Hunt)
+//              and forwards that request to the Hero.
+// Preconditions: Hero exists and has methods Raw/Natural/Food/Hunt.
+// Postconditions: One gather action is performed and the result printed.
+void Game::UseArea() {
+    cout << "What would you like to do in this area?\n";
+    cout << "1. Mine for raw materials\n";
+    cout << "2. Forage for natural resources\n";
+    cout << "3. Gather food\n";
+    cout << "4. Hunt for creature drops\n";
+    cout << "Enter your choice: ";
+
+    int choice;
+    cin >> choice;
+    cin.ignore();
+
+    switch (choice) {
+        case 1: m_myHero->Raw(); break;
+        case 2: m_myHero->Natural(); break;
+        case 3: m_myHero->Food(); break;
+        case 4: m_myHero->Hunt(); break;
+        default: cout << "Invalid choice!\n";
+    }
+}
+
+
